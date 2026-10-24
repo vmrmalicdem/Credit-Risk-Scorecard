@@ -1,4 +1,82 @@
-# raw column name (or position if the files have no header) -> semantic name.
-# Filled on Day 1-2 from the official field documentation.
-origination: {}
-performance: {}
+# Positional schema map (files have no header row).
+# Source: Freddie Mac Single-Family Loan-Level Dataset General User Guide, Release 47 (July 2026),
+# Glossary section, which lists attributes "in the order in which they appear in the files".
+# VERIFY against the official header/file layout on the SFLLD download page and with
+# `py src/creditrisk/check_schema.py` before trusting any column.
+# missing = sentinel strings the guide defines as "Not Available" for that field.
+
+origination:   # sample_orig_YYYY.txt, 31 columns, one row per loan
+  - {pos: 0,  name: credit_score,        known_at: origination, missing: ["9999"]}
+  - {pos: 1,  name: first_payment_date,  known_at: origination}
+  - {pos: 2,  name: first_time_homebuyer, known_at: origination, missing: ["9"]}
+  - {pos: 3,  name: maturity_date,       known_at: origination}
+  - {pos: 4,  name: msa,                 known_at: origination}
+  - {pos: 5,  name: mi_pct,              known_at: origination, missing: ["999"]}
+  - {pos: 6,  name: num_units,           known_at: origination, missing: ["99"]}
+  - {pos: 7,  name: occupancy,           known_at: origination, missing: ["9"]}
+  - {pos: 8,  name: cltv,                known_at: origination, missing: ["999"]}
+  - {pos: 9,  name: dti,                 known_at: origination, missing: ["999"]}
+  - {pos: 10, name: orig_upb,            known_at: origination}
+  - {pos: 11, name: ltv,                 known_at: origination, missing: ["999"]}
+  - {pos: 12, name: orig_rate,           known_at: origination}
+  - {pos: 13, name: channel,             known_at: origination, missing: ["9"]}
+  - {pos: 14, name: prepay_penalty_flag, known_at: origination}
+  - {pos: 15, name: amort_type,          known_at: origination}
+  - {pos: 16, name: state,               known_at: origination}
+  - {pos: 17, name: property_type,       known_at: origination, missing: ["99"]}
+  - {pos: 18, name: zip3,                known_at: origination, missing: ["000"]}
+  - {pos: 19, name: loan_id,             known_at: origination}
+  - {pos: 20, name: loan_purpose,        known_at: origination, missing: ["9"]}
+  - {pos: 21, name: orig_term,           known_at: origination}
+  - {pos: 22, name: num_borrowers,       known_at: origination, missing: ["99"]}
+  - {pos: 23, name: seller,              known_at: origination}
+  - {pos: 24, name: super_conforming,    known_at: origination}
+  - {pos: 25, name: pre_harp_loan_id,    known_at: origination}
+  - {pos: 26, name: special_program,     known_at: origination}
+  - {pos: 27, name: harp_flag,           known_at: origination}
+  - {pos: 28, name: valuation_method,    known_at: origination, missing: ["7"]}   # guide: populated only for loans originated 2017+
+  - {pos: 29, name: io_flag,             known_at: origination}
+  - {pos: 30, name: vantage_score,       known_at: origination, missing: ["9999"]}
+
+performance:   # sample_perf_YYYY.txt, 35 columns, many rows per loan
+  - {pos: 0,  name: loan_id,                 known_at: key}
+  - {pos: 1,  name: period,                  known_at: key}
+  - {pos: 2,  name: current_upb,             known_at: performance}
+  - {pos: 3,  name: delinq_status,           known_at: performance, missing: ["XX"]}   # 00,01,02,03... ; RA = REO acquisition
+  - {pos: 4,  name: loan_age,                known_at: performance}
+  - {pos: 5,  name: months_to_maturity,      known_at: performance}
+  - {pos: 6,  name: defect_settlement_date,  known_at: outcome}
+  - {pos: 7,  name: mod_flag,                known_at: performance}
+  - {pos: 8,  name: zero_bal_code,           known_at: outcome}
+  - {pos: 9,  name: zero_bal_date,           known_at: outcome}
+  - {pos: 10, name: current_rate,            known_at: performance}
+  - {pos: 11, name: non_int_bearing_upb,     known_at: performance}
+  - {pos: 12, name: ddlpi,                   known_at: performance}
+  - {pos: 13, name: mi_recoveries,           known_at: outcome}
+  - {pos: 14, name: net_sale_proceeds,       known_at: outcome}
+  - {pos: 15, name: non_mi_recoveries,       known_at: outcome}
+  - {pos: 16, name: total_expenses,          known_at: outcome}
+  - {pos: 17, name: legal_costs,             known_at: outcome}
+  - {pos: 18, name: maint_costs,             known_at: outcome}
+  - {pos: 19, name: taxes_insurance,         known_at: outcome}
+  - {pos: 20, name: misc_expenses,           known_at: outcome}
+  - {pos: 21, name: actual_loss,             known_at: outcome}
+  - {pos: 22, name: cum_mod_costs,           known_at: performance}
+  - {pos: 23, name: step_rate_flag,          known_at: performance}
+  - {pos: 24, name: payment_deferral_flag,   known_at: performance}
+  - {pos: 25, name: eltv,                    known_at: performance, missing: ["999"]}  # guide: only populated April 2017+
+  - {pos: 26, name: zero_bal_removal_upb,    known_at: outcome}
+  - {pos: 27, name: delinq_accrued_interest, known_at: outcome}
+  - {pos: 28, name: disaster_delinq_flag,    known_at: performance}
+  - {pos: 29, name: borrower_assist_plan,    known_at: performance}
+  - {pos: 30, name: current_period_mod_costs, known_at: performance}
+  - {pos: 31, name: int_bearing_upb,         known_at: performance}
+  - {pos: 32, name: mi_cancel_flag,          known_at: performance, missing: ["7"]}
+  - {pos: 33, name: servicer,                known_at: performance}
+  - {pos: 34, name: cramdown_costs,          known_at: outcome}
+
+# known_at legend:
+#   origination = fixed at loan origination, safe as a feature
+#   performance = changes over time; usable as a feature ONLY if observed at or before the prediction date
+#   outcome     = populated at/after a termination or loss event; NEVER a feature (leakage)
+#   key         = identifiers / time index

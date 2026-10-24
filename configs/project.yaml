@@ -1,9 +1,20 @@
-# Fill after inspecting the data (Day 1-2). Do not guess.
+# Project configuration. Values below are decisions already supported by the data profiling.
 seed: 42
-vintage_year: null            # e.g. the year of the sample file you downloaded
-prediction_rule: null         # decided on Day 2 and documented in docs/target_definition.md
+vintage_year: 2015
+prediction_rule:
+  type: loan_age            # PROPOSED, see docs/target_definition.md
+  age_months: 24
 outcome_window_months: 12
-split: {train: 0.6, val: 0.2, test: 0.2}
+max_first_payment: 201603   # drops converted/modified-type outliers
+default_event:
+  delinq_status_min: 3      # 90+ days
+  reo_status: "RA"
+  credit_zero_balance_codes: ["02", "03", "09", "15"]
+  excluded_termination_codes: ["16", "96"]
+  censored_codes: ["01"]
+split:
+  test_size: 0.30           # ~221 events in total, so a fixed validation set would be too small
+  cv_folds: 5               # stratified, loan-level, inside the development set only
 paths:
   raw: data/raw
   interim: data/interim
