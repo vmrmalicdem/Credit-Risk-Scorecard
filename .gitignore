@@ -1,0 +1,10 @@
+# Raw and derived loan-level data must never be committed (see README / data terms)
+data/
+artifacts/
+mlruns/
+.venv/
+__pycache__/
+.ipynb_checkpoints/
+*.zip
+*.parquet
+.DS_Store

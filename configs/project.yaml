@@ -1,0 +1,11 @@
+# Fill after inspecting the data (Day 1-2). Do not guess.
+seed: 42
+vintage_year: null            # e.g. the year of the sample file you downloaded
+prediction_rule: null         # decided on Day 2 and documented in docs/target_definition.md
+outcome_window_months: 12
+split: {train: 0.6, val: 0.2, test: 0.2}
+paths:
+  raw: data/raw
+  interim: data/interim
+  processed: data/processed
+  artifacts: artifacts

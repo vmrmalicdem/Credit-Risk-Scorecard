@@ -1,0 +1,4 @@
+# raw column name (or position if the files have no header) -> semantic name.
+# Filled on Day 1-2 from the official field documentation.
+origination: {}
+performance: {}
