@@ -58,8 +58,16 @@ All numbers below are from the held-out test set (12,148 loans, 66 defaults, bas
 
 - **No model wins.** The scorecard and LightGBM intervals overlap on every metric; with 66 test defaults the data cannot separate them. The interpretable scorecard is competitive.
 - **Behaviour drives most of the signal.** Adding delinquency history at month 24 lifts ROC-AUC from about 0.79 to about 0.90. This is not leakage (all fields are observed at or before the prediction month) but it resembles roll-rate behaviour: loans already 30-89 days late are the ones that reach 90+.
+- **The delinquency fields split the population sharply.** Because most loans have never been late, the binner collapses each field to two bins. In the development set, 809 loans (2.9%) had any delinquency in the prior 12 months and 9.64% of them defaulted, against 0.28% of the other 27,534. Loans already 30 to 89 days late at month 24 (213 loans) defaulted at 24.88% against 0.36%. Across the full modeling population, the 1,154 loans (2.9%) that were either late at month 24 or late at some point in the prior 12 months hold 115 of the 221 defaults (52%): a default rate of about 10% against about 0.27% for the other 39,337 loans. The scorecard gives the late groups about 52 to 56 fewer points than the never-late group, roughly 7 times the odds in the fitted model, far less than the raw ratios of about 40 to 90 times because the two fields overlap.
 - **Origination-only models rank loans but give weak probabilities.** Their Brier score (0.0054) equals that of a constant prediction at the base rate, and the calibration slope is below 1 (predictions are over-dispersed).
 - **Sensitivity to disaster-flagged events.** 65 of the 221 defaults carry a disaster flag and 119 a borrower assistance plan. Removing disaster-flagged test defaults changes ROC-AUC from 0.908 to 0.901 (full scorecard) and 0.896 to 0.884 (full LightGBM), but from 0.790 to 0.754 and 0.786 to 0.742 for the origination-only models, so their ranking depends more on those events.
+- **State is largely a disaster-exposure proxy in this vintage.** In the development set, Florida accounts for 49 of 155 defaults (2.8% vs 0.55% overall); 52 of 54 states have fewer than 10 defaults. Across all 221 defaults, 100 are in FL, TX or LA (states chosen after seeing the data), and 62 of those carry a disaster flag, against 3 of 121 elsewhere. Removing `state` lowers the scorecard's test ROC-AUC (0.908 to 0.868 full; 0.790 to 0.760 origination-only, intervals on the difference exclude zero) but changes LightGBM's AUC and every PR-AUC within noise. The models were kept with `state` included; its contribution should be read as exposure to the 2017 hurricane season in these outcome windows, not as a stable geographic risk factor.
+
+### What the models use
+![Scorecard points](reports/figures/fig6_scorecard_points.png)
+![LightGBM SHAP](reports/figures/fig7_lgbm_shap.png)
+
+Scorecard points are on a 600-point scale (20 points to double the odds); the full table is in `reports/scorecard_points.md`. In the full model the widest points ranges are `state` (56), `max_delinq_prior12` (56), `delinq_at_pred` (51) and `credit_score` (42). For LightGBM, mean absolute SHAP on the test set ranks `state` (0.535), `credit_score` (0.352), `dti` (0.192), `upb_ratio` (0.146) and `max_delinq_prior12` (0.131) highest. The delinquency fields rank lower in SHAP than in the scorecard because mean |SHAP| averages over all loans and only about 3% are ever late; the points range measures the gap between bins instead. In the origination-only models, `credit_score` leads LightGBM (0.566) and `state` leads the scorecard (56 points, with `credit_score` at 55). The points range favors features with many levels, so read it alongside the SHAP ranking and the state check above.
 
 ### Realized LGD
 Pooled mean **0.230** (95% bootstrap interval 0.193 to 0.271, n = 134; median 0.16). A split by origination LTV gave 0.217 (above 80, n = 71) and 0.246 (80 or below, n = 63): overlapping intervals and the opposite direction to expectation, so the segments were not used. A plausible reason, not tested, is mortgage-insurance recoveries on higher-LTV loans.
@@ -91,6 +99,18 @@ Pooled mean **0.230** (95% bootstrap interval 0.193 to 0.271, n = 134; median 0.
 - **LGD is simplified.** It is liquidation-only (134 loans over the whole life of the sample, including test loans), excludes modification costs, and applies one average to every loan. `ecl_spec` therefore overstates, and `ecl_adj` likely understates, economic loss; the truth lies between them.
 - **Stress tests are sensitivities.** Changing a feature in a fitted model is neither a causal estimate nor a macroeconomic forecast. LTV is origination LTV, not a current house-price-indexed value, and large shocks extrapolate beyond the data.
 - **Not IFRS 9.** No staging, lifetime PD, discounting, or forward-looking scenarios.
+- **Event concentration.** Roughly a third of development defaults are in Florida, and most disaster-flagged defaults sit in three Gulf states. Discrimination, and the stress results, partly reflect that single set of events, so they should not be expected to carry over to other vintages or years.
+
+## Scope decisions and not done
+Built after the core pipeline: a points-scaled scorecard table, LightGBM SHAP importance, and a state ablation (see `interpret.py` and `state_check.py`).
+
+Left out on purpose, to keep the project finishable and the claims inside the evidence:
+- **Survival or lifetime PD, IFRS 9 staging, discounting:** the target is a single 12-month default flag, so the expected loss is a simplified 12-month figure.
+- **Multi-vintage or out-of-time validation:** one vintage and a random split. Adding vintages would be the most useful extension.
+- **A full LGD model:** one pooled realized-loss average; an LTV split was tried and not used.
+- **External macro data:** stress tests are feature shocks to fitted models, not macroeconomic scenarios.
+- **Weight-of-evidence encoding, heavy hyperparameter tuning, MLflow, schema-validation libraries:** skipped as not needed at this scale; the leakage guard is a schema tag check plus a test.
+- **COVID out-of-regime check:** the prediction rule was chosen so outcome windows avoid the COVID period; no separate COVID analysis was run.
 
 ## Reproduce
 ```
@@ -101,6 +121,9 @@ py src\creditrisk\build_dataset.py
 py src\creditrisk\train.py --features full
 py src\creditrisk\train.py --features origination
 py src\creditrisk\ecl_stress.py
+py src\creditrisk\interpret.py
+py src\creditrisk\state_check.py --features full
+py src\creditrisk\state_check.py --features origination
 py src\creditrisk\report.py
 pytest -q
 ```
@@ -110,8 +133,8 @@ Seeds and decisions live in `configs/project.yaml`; five tests cover the binner,
 ```
 configs/        project.yaml (seed, prediction rule, default definition), schema_map.yaml (field map)
 docs/           field_dictionary_draft.md, target_definition.md
-src/creditrisk/ inspect_files, check_schema, window_counts, build_dataset, features, train, ecl_stress, report
+src/creditrisk/ inspect_files, check_schema, window_counts, build_dataset, features, train, ecl_stress, interpret, state_check, report
 tests/          binner, leakage, table integrity, split tests
-reports/        funnel, per-set metrics, LGD and stress tables, figures, summary_tables.md
+reports/        funnel, per-set metrics, scorecard points, SHAP importance, state checks, LGD and stress tables, figures, summary_tables.md
 data/, artifacts/   not committed
 ```

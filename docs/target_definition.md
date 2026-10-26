@@ -1,4 +1,4 @@
-# Target definition (DRAFT v1: decisions marked PROPOSED until confirmed in code)
+# Target definition (Final decisions)
 
 ## Data (established, from profiling)
 - Freddie Mac Single-Family Loan-Level Dataset, **sample file, vintage 2015**: 50,000 loans, all with loan ID prefix `F15`.
@@ -27,7 +27,7 @@
 - A performance row exists for the prediction month.
 - Delinquency status is 00, 01, or 02 (less than 90 days) and the loan has not terminated.
 - Current balance is greater than zero.
-- Loans with first payment after 2016-03 (at least 13 loans: converted or modified-type records) are dropped; the exact count is reported in the data funnel.
+- Loans with first payment after 2016-03 (at least 76 loans: converted or modified-type records) are dropped; the exact count is reported in the data funnel.
 
 ## Default event (PROPOSED)
 Default = in any month within the 12-month window, at least one of:
@@ -46,7 +46,7 @@ Other outcomes:
 
 ## EAD and LGD (PROPOSED)
 - EAD = current actual UPB at the prediction month.
-- LGD = `actual_loss / zero_bal_removal_upb` for liquidated loans (credit-event zero balance codes with a non-null Actual Loss: 134 loans over the whole life of the sample), clipped to a stated range. Segments to be chosen after checking counts per segment.
+- LGD = Pooled mean 0.230 from 134 liquidated loans, floored at 0 and capped at 1. A split by origination LTV was tried and not used because the segments overlapped and went the wrong way.
 
 ## Open checks
 - Share of window defaults flagged as disaster-related (`disaster_delinq_flag`) or in a borrower assistance plan (`borrower_assist_plan`): report as a sensitivity, do not silently remove.
