@@ -1,0 +1,9 @@
+step,loans
+origination loans in sample file,50000
+after dropping first payment later than 201603,49924
+with a performance row at age 24,41003
+"eligible: status < 90 days, active, balance > 0",40492
+excluded: ended in window as code 16 / 96,1
+"  (kept) paid off inside window, counted as non-default",4025
+MODELING POPULATION,40491
+  defaults in window (target = 1),221

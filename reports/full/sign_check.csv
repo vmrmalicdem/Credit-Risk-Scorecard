@@ -1,0 +1,9 @@
+feature,expected,n_bins,spearman_bin_vs_coef,status
+credit_score,-,5,-0.8999999999999998,ok
+ltv,+,5,0.3,ok
+cltv,+,5,-0.09999999999999999,CHECK
+dti,+,5,0.9999999999999999,ok
+orig_rate,+,5,0.6,ok
+delinq_at_pred,+,2,0.9999999999999999,ok
+max_delinq_prior12,+,2,0.9999999999999999,ok
+ever_90_before,+,2,0.9999999999999999,ok
