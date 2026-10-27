@@ -99,6 +99,7 @@ Pooled mean **0.230** (95% bootstrap interval 0.193 to 0.271, n = 134; median 0.
 - **LGD is simplified.** It is liquidation-only (134 loans over the whole life of the sample, including test loans), excludes modification costs, and applies one average to every loan. `ecl_spec` therefore overstates, and `ecl_adj` likely understates, economic loss; the truth lies between them.
 - **Stress tests are sensitivities.** Changing a feature in a fitted model is neither a causal estimate nor a macroeconomic forecast. LTV is origination LTV, not a current house-price-indexed value, and large shocks extrapolate beyond the data.
 - **Not IFRS 9.** No staging, lifetime PD, discounting, or forward-looking scenarios.
+- **One coefficient sign fails the check.** `cltv` has a slightly negative association with its binned coefficient in both feature sets (Spearman -0.1 across five bins). It is nearly collinear with `ltv`, which carries the expected positive sign, so the pair is best read together; the scorecard was not adjusted.
 - **Event concentration.** Roughly a third of development defaults are in Florida, and most disaster-flagged defaults sit in three Gulf states. Discrimination, and the stress results, partly reflect that single set of events, so they should not be expected to carry over to other vintages or years.
 
 ## Scope decisions and not done
@@ -113,6 +114,9 @@ Left out on purpose, to keep the project finishable and the claims inside the ev
 - **COVID out-of-regime check:** the prediction rule was chosen so outcome windows avoid the COVID period; no separate COVID analysis was run.
 
 ## Reproduce
+
+Create `data\raw\` and place the Freddie Mac sample files there (they are not included in the repository).
+
 ```
 py -m venv .venv
 .venv\Scripts\activate
