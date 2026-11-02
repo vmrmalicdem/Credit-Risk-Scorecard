@@ -115,30 +115,44 @@ Left out on purpose, to keep the project finishable and the claims inside the ev
 
 ## Reproduce
 
+## Reproduce
 Create `data\raw\` and place the Freddie Mac sample files there (they are not included in the repository).
 
 ```
 py -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
-py src\creditrisk\build_dataset.py
-py src\creditrisk\train.py --features full
-py src\creditrisk\train.py --features origination
-py src\creditrisk\ecl_stress.py
-py src\creditrisk\interpret.py
-py src\creditrisk\state_check.py --features full
-py src\creditrisk\state_check.py --features origination
-py src\creditrisk\report.py
-pytest -q
+pip install -e . --no-deps
+py -m creditrisk.build_dataset
+py -m creditrisk.train --features full
+py -m creditrisk.train --features origination
+py -m creditrisk.ecl_stress
+py -m creditrisk.interpret
+py -m creditrisk.state_check --features full
+py -m creditrisk.state_check --features origination
+py -m creditrisk.report
+pytest
 ```
-Seeds and decisions live in `configs/project.yaml`; five tests cover the binner, leakage guard, model-table integrity, and the split.
+Every parameter (seed, split, bins, model grids, LGD rules, stress scenarios, points scaling, feature lists) is in `configs/project.yaml`; nothing is hardcoded in the code. Dependencies are pinned in `requirements.txt` (generated on Python 3.13).
+
+## Development
+```
+pip install -r requirements.txt
+pip install -e . --no-deps
+pre-commit install
+ruff check .
+pytest
+```
+Tests run on synthetic data and need no loan files. They cover the binner, feature building, points scoring, ECL and LGD arithmetic, target and eligibility logic, and a leakage test that rebuilds the dataset with everything after the prediction month rewritten and fails if any feature changes. A pre-commit hook blocks loan data and model artifacts from being committed. GitHub Actions runs lint and tests on every push.
 
 ## Repository layout
 ```
-configs/        project.yaml (seed, prediction rule, default definition), schema_map.yaml (field map)
+configs/        project.yaml (all parameters), schema_map.yaml (field map and known_at tags)
 docs/           field_dictionary_draft.md, target_definition.md
-src/creditrisk/ inspect_files, check_schema, window_counts, build_dataset, features, train, ecl_stress, interpret, state_check, report
-tests/          binner, leakage, table integrity, split tests
-reports/        funnel, per-set metrics, scorecard points, SHAP importance, state checks, LGD and stress tables, figures, summary_tables.md
+src/creditrisk/ config, leakage, features, build_dataset, train, metrics, scoring, ecl, ecl_stress,
+                interpret, state_check, report, plus inspect_files, check_schema, window_counts
+tests/          unit tests, leakage test, build-logic tests on synthetic loans, pin check
+reports/        funnel, per-set metrics, scorecard points, SHAP, state checks, LGD and stress tables, figures
+.github/        CI workflow (ruff and pytest on every push)
 data/, artifacts/   not committed
 ```
