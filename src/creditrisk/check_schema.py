@@ -5,7 +5,6 @@ Usage (from repo root):
 Needs: pandas, pyyaml. Reads only the performance columns it needs to keep memory low.
 """
 import argparse
-import re
 
 import pandas as pd
 import yaml
@@ -16,7 +15,8 @@ ap.add_argument("--perf", required=True)
 ap.add_argument("--schema", default="configs/schema_map.yaml")
 args = ap.parse_args()
 
-schema = yaml.safe_load(open(args.schema))
+with open(args.schema) as fh:
+    schema = yaml.safe_load(fh)
 omap = {c["pos"]: c["name"] for c in schema["origination"]}
 pmap = {c["pos"]: c["name"] for c in schema["performance"]}
 

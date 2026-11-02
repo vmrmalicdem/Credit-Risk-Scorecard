@@ -1,6 +1,7 @@
 """Shared feature helpers: quantile binner for the scorecard and frame builders for both models.
 
-Keep this file in the same folder as train.py and stress.py; saved models import it by module name.
+Saved models are pickled with a reference to this module's path (creditrisk.features); do not rename it
+without retraining.
 """
 import numpy as np
 import pandas as pd
@@ -61,5 +62,6 @@ def category_levels(df, spec):
 def lgbm_frame(df, spec, levels):
     X = df[spec["numeric"] + spec["categorical"]].copy()
     for c in spec["categorical"]:
-        X[c] = pd.Categorical(X[c].astype("object").where(X[c].notna(), None), categories=levels[c])
+        values = X[c].astype("object")
+        X[c] = pd.Categorical(values.where(values.isin(levels[c]), None), categories=levels[c])
     return X

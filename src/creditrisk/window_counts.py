@@ -26,7 +26,8 @@ ap.add_argument("--max-first-pay", type=int, default=None, help="drop loans with
 ap.add_argument("--window", type=int, default=12)
 args = ap.parse_args()
 
-schema = yaml.safe_load(open(args.schema))
+with open(args.schema) as fh:
+    schema = yaml.safe_load(fh)
 omap = {c["pos"]: c["name"] for c in schema["origination"]}
 pmap = {c["pos"]: c["name"] for c in schema["performance"]}
 
@@ -86,7 +87,7 @@ def summarize(label, pred_idx):
     d = d.merge(rows, left_on=["loan_id", "pred"], right_on=["loan_id", "pidx"], how="inner")
     d = d[d.status_ok & d.active_pos][["loan_id", "pred"]]
     if d.empty:
-        return dict(rule=label, eligible=0)
+        return {"rule": label, "eligible": 0}
     e = d.merge(ev, on="loan_id", how="left")
     e["in_win"] = (e.ev_idx > e.pred) & (e.ev_idx <= e.pred + W)
     e["before"] = e.ev_idx <= e.pred
@@ -98,11 +99,12 @@ def summarize(label, pred_idx):
     keep = ~excluded
     n = int(keep.sum())
     covid = ((g.pred + W >= COVID[0]) & (g.pred + 1 <= COVID[1]))[keep].mean()
-    return dict(rule=label, eligible=n, defaults=int(g.default[keep].sum()),
-                rate_pct=round(100 * g.default[keep].mean(), 2),
-                prior_90_cured=int(g.prior90[keep].sum()), prepaid_in_window=int(prepaid.sum()),
-                excluded_16_96=int(excluded.sum()),
-                window_covid_overlap_pct=round(100 * covid), pred_min=int(g.pred.min()), pred_max=int(g.pred.max()))
+    return {"rule": label, "eligible": n, "defaults": int(g.default[keep].sum()),
+            "rate_pct": round(100 * g.default[keep].mean(), 2),
+            "prior_90_cured": int(g.prior90[keep].sum()), "prepaid_in_window": int(prepaid.sum()),
+            "excluded_16_96": int(excluded.sum()),
+            "window_covid_overlap_pct": round(100 * covid), "pred_min": int(g.pred.min()),
+            "pred_max": int(g.pred.max())}
 
 
 out = []

@@ -22,7 +22,7 @@ EXTS = {".csv", ".txt", ".dat", ".psv", ".tsv", ".gz", ".zip"}
 def sniff_sep(path: Path, forced):
     if forced:
         return forced
-    with open(path, "r", errors="replace") as f:
+    with open(path, errors="replace") as f:
         sample = f.read(20000)
     try:
         return csv.Sniffer().sniff(sample, delimiters="|,;\t").delimiter

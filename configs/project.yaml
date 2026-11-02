@@ -1,8 +1,8 @@
-# Project configuration. Values below are decisions already supported by the data profiling.
+# Project configuration. Every tunable value used by the pipeline lives here; code holds no parameters.
 seed: 42
 vintage_year: 2015
 prediction_rule:
-  type: loan_age            # PROPOSED, see docs/target_definition.md
+  type: loan_age            # see docs/target_definition.md
   age_months: 24
 outcome_window_months: 12
 max_first_payment: 201603   # drops converted/modified-type outliers
@@ -20,3 +20,67 @@ paths:
   interim: data/interim
   processed: data/processed
   artifacts: artifacts
+  reports: reports
+
+# Feature sets. Behaviour features are observed at or before the prediction month; the value lists the source
+# fields, which tests check against the schema tags (known_at) so no outcome field can enter.
+features:
+  origination:
+    numeric: [credit_score, ltv, cltv, dti, orig_upb, orig_rate, mi_pct, num_units, orig_term, num_borrowers]
+    categorical: [first_time_homebuyer, occupancy, channel, loan_purpose, property_type, state,
+                  prepay_penalty_flag, super_conforming, harp_flag]
+  behaviour:
+    numeric:
+      upb_ratio: [current_upb]
+      delinq_at_pred: [delinq_status]
+      max_delinq_prior12: [delinq_status]
+      ever_90_before: [delinq_status]
+    categorical:
+      mod_at_pred: [mod_flag]
+  behaviour_lookback_months: 12
+  expected_signs: {credit_score: -1, ltv: 1, cltv: 1, dti: 1, orig_rate: 1,
+                   delinq_at_pred: 1, max_delinq_prior12: 1, ever_90_before: 1}
+
+scorecard:
+  n_bins: 5
+  min_category_frequency: 0.01
+  c_grid: [0.01, 0.03, 0.1, 0.3, 1.0]
+
+lgbm:
+  fixed: {n_estimators: 300, subsample: 0.8, subsample_freq: 1, colsample_bytree: 0.8}
+  grid:
+    learning_rate: [0.02, 0.05]
+    num_leaves: [4, 8, 16]
+    min_child_samples: [50, 150]
+    reg_lambda: [1, 10]
+
+evaluation:
+  n_bootstrap: 500
+  top_share: 0.10           # "recall in the top 10% of scores"
+  calibration_bins: 5
+  prob_clip: 1.0e-6
+  platt_c: 1.0e+6           # effectively unregularized logistic recalibration
+
+lgd:
+  min_segment_loans: 30
+  ltv_split: 80.0
+  bootstrap_resamples: 2000
+  floor: 0.0
+  cap: 1.0
+
+stress:
+  ltv_cap: 150.0
+  reference_quantile: 0.99  # extrapolation is reported against this quantile of observed values
+  scenarios:
+    baseline: {ltv_pp: 0, rate_pts: 0.0}
+    ltv_10: {ltv_pp: 10, rate_pts: 0.0}
+    ltv_20: {ltv_pp: 20, rate_pts: 0.0}
+    rate_200: {ltv_pp: 0, rate_pts: 2.0}
+    combined: {ltv_pp: 20, rate_pts: 2.0}
+
+points:                     # score = base_score + factor * ln(good:bad odds), higher = lower risk
+  base_score: 600
+  base_odds: 200
+  pdo: 20
+  min_bin_loans: 50
+  top_features: 12

@@ -8,3 +8,6 @@ __pycache__/
 *.zip
 *.parquet
 .DS_Store
+.ruff_cache/
+.pytest_cache/
+*.egg-info/
