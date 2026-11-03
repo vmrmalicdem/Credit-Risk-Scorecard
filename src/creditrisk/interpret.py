@@ -20,7 +20,6 @@ import numpy as np
 import pandas as pd
 
 from creditrisk.config import common_args, load_config, project_paths
-from creditrisk.features import lgbm_frame
 from creditrisk.scoring import (
     points_range_by_feature,
     points_scale,
@@ -43,9 +42,9 @@ def md(df):
     return "\n".join(lines + ["| " + " | ".join(map(str, r)) + " |" for r in df.to_numpy()])
 
 
-def shap_importance(lgbm_bundle, test):
-    X = lgbm_frame(test, lgbm_bundle["spec"], lgbm_bundle["levels"])
-    contrib = lgbm_bundle["model"].booster_.predict(X, pred_contrib=True)
+def shap_importance(scorer, test):
+    X = scorer.pipeline[:-1].transform(test)
+    contrib = scorer.pipeline.named_steps["model"].booster_.predict(X, pred_contrib=True)
     assert contrib.shape[1] == X.shape[1] + 1
     s = pd.DataFrame({"feature": X.columns, "mean_abs_shap": np.abs(contrib[:, :-1]).mean(axis=0)})
     s["share_of_total"] = s.mean_abs_shap / s.mean_abs_shap.sum()
@@ -86,7 +85,7 @@ def run(cfg, log=print):
         dev = df[df.loan_id.map(split) == "dev"].reset_index(drop=True)
         test = df[df.loan_id.map(split) == "test"].reset_index(drop=True)
         sc = joblib.load(art / fs / "scorecard.joblib")
-        t = scorecard_table(sc["model"], sc["spec"], dev, scale)
+        t = scorecard_table(sc.pipeline, dev, scale)
         t.to_csv(rep / fs / "scorecard_table.csv", index=False)
         tables[fs] = t
         ranges[fs] = points_range_by_feature(t, pts["min_bin_loans"])

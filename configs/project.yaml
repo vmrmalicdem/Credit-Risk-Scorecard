@@ -84,3 +84,44 @@ points:                     # score = base_score + factor * ln(good:bad odds), h
   pdo: 20
   min_bin_loans: 50
   top_features: 12
+
+# Data validation (Pandera). Applied to the cleaned origination table, the modeling table and scoring input.
+# max_null_rate defaults to 0 (no missing values allowed). Bounds are guardrails, not model assumptions:
+# widen them in this file if the data legitimately exceeds them. Freddie Mac files carry no income field, so
+# DTI and original balance are the affordability and size bounds.
+validation:
+  on_failure: raise            # raise | warn
+  tables:
+    origination: {min_rows: 1000, unique: [loan_id]}
+    model_table: {min_rows: 1000, min_defaults: 50, default_rate: [0.0005, 0.20], unique: [loan_id]}
+  columns:
+    credit_score: {min: 300, max: 850, max_null_rate: 0.02}
+    ltv: {min: 1, max: 998, max_null_rate: 0.01}
+    cltv: {min: 1, max: 998, max_null_rate: 0.01}
+    dti: {min: 0, max: 100, max_null_rate: 0.15}
+    orig_upb: {min: 1000, max: 2000000}
+    orig_rate: {min: 0.5, max: 15}
+    mi_pct: {min: 0, max: 60, max_null_rate: 0.01}
+    num_units: {min: 1, max: 4, max_null_rate: 0.01}
+    orig_term: {min: 12, max: 480}
+    num_borrowers: {min: 1, max: 10, max_null_rate: 0.01}
+    first_time_homebuyer: {allowed: [Y, N], max_null_rate: 0.05}
+    occupancy: {allowed: [P, I, S], max_null_rate: 0.01}
+    channel: {allowed: [R, B, C, T], max_null_rate: 0.01}
+    loan_purpose: {allowed: [P, C, N], max_null_rate: 0.01}
+    property_type: {allowed: [SF, PU, CO, MH, CP], max_null_rate: 0.01}
+    state: {pattern: '^[A-Z]{2}$'}
+    prepay_penalty_flag: {allowed: [Y, N], max_null_rate: 0.01}
+    super_conforming: {allowed: [Y, N], max_null_rate: 1.0}
+    harp_flag: {allowed: [Y, N], max_null_rate: 1.0}
+    upb_ratio: {min: 0, max: 1.5}
+    delinq_at_pred: {min: 0, max: 2}
+    max_delinq_prior12: {min: 0, max: 99, max_null_rate: 0.0}
+    ever_90_before: {allowed: [0, 1]}
+    mod_at_pred: {allowed: [Y, N]}
+    ead: {min: 1, max: 5000000}
+    target: {allowed: [0, 1]}
+    meta_disaster_event: {allowed: [0, 1]}
+    meta_assist_event: {allowed: [0, 1]}
+    pred_period: {pattern: '^\d{6}$'}
+    loan_id: {pattern: '^[A-Z]\w{2,}$'}

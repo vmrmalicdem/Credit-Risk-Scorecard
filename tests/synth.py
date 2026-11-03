@@ -145,3 +145,16 @@ def make_model_table(cfg, n=4000, seed=0):
     df["meta_disaster_event"] = ((df.target == 1) & (rng.random(n) < 0.3)).astype(int)
     df["meta_assist_event"] = ((df.target == 1) & (rng.random(n) < 0.5)).astype(int)
     return df
+
+
+def make_valid_table(cfg, n=4000, seed=0):
+    """make_model_table with categorical values replaced by ones the validation rules allow."""
+    from creditrisk.config import feature_lists
+
+    df = make_model_table(cfg, n=n, seed=seed)
+    rng = np.random.default_rng(seed + 1)
+    for c in feature_lists(cfg, "full")["categorical"]:
+        rule = cfg["validation"]["columns"][c]
+        if "allowed" in rule:
+            df[c] = rng.choice(rule["allowed"], n)
+    return df

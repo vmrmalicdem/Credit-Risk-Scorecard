@@ -16,13 +16,13 @@ import argparse
 import joblib
 import numpy as np
 import pandas as pd
-from lightgbm import LGBMClassifier
 from sklearn.metrics import average_precision_score, roc_auc_score
 from sklearn.model_selection import StratifiedKFold
 
 from creditrisk.config import FEATURE_SETS, common_args, load_config, project_paths
-from creditrisk.features import category_levels, lgbm_frame, scorecard_frame
+from creditrisk.features import category_levels
 from creditrisk.metrics import bootstrap_indices
+from creditrisk.model import build_lgbm_pipeline
 from creditrisk.train import fit_scorecard
 
 
@@ -55,15 +55,16 @@ def run(cfg, feature_set, log=print):
     log(g.head(10).round(4).to_string(index=False))
 
     lg_old = joblib.load(art / "lgbm.joblib")
-    spec = {k: [c for c in v if c != "state"] for k, v in lg_old["spec"].items()}
+    spec = {k: [c for c in v if c != "state"] for k, v in lg_old.spec.items()}
+    chosen = {k: v for k, v in lg_old.pipeline.named_steps["model"].get_params().items()
+              if k in cfg["lgbm"]["grid"]}
     levels = category_levels(df, spec)
     y_dev, y_test = dev.target.to_numpy(), test.target.to_numpy()
     cv = StratifiedKFold(cfg["split"]["cv_folds"], shuffle=True, random_state=seed)
 
-    sc = fit_scorecard(scorecard_frame(dev, spec), y_dev, spec, cfg, cv)
-    lg = LGBMClassifier(**lg_old["model"].get_params()).fit(lgbm_frame(dev, spec, levels), y_dev)
-    new = {"scorecard": sc.predict_proba(scorecard_frame(test, spec))[:, 1],
-           "lgbm": lg.predict_proba(lgbm_frame(test, spec, levels))[:, 1]}
+    sc = fit_scorecard(dev, y_dev, spec, cfg, cv)
+    lg = build_lgbm_pipeline(spec, cfg, levels, params=chosen).fit(dev, y_dev)
+    new = {"scorecard": sc.predict_proba(test)[:, 1], "lgbm": lg.predict_proba(test)[:, 1]}
     old = {k: pred.loc[test.loan_id, f"p_{k}_raw"].to_numpy() for k in new}
 
     rng = np.random.default_rng(seed)

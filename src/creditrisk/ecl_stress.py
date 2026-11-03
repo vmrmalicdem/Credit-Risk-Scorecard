@@ -34,14 +34,6 @@ from creditrisk.ecl import (
     shock,
     wilson_interval,
 )
-from creditrisk.features import lgbm_frame, scorecard_frame
-from creditrisk.metrics import apply_platt
-
-
-def score(bundle, d, kind, eps):
-    spec = bundle["spec"]
-    X = scorecard_frame(d, spec) if kind == "scorecard" else lgbm_frame(d, spec, bundle["levels"])
-    return apply_platt(bundle["model"].predict_proba(X)[:, 1], bundle["platt"], eps)
 
 
 def run(cfg, lgd_mode="pooled", log=print):
@@ -49,7 +41,6 @@ def run(cfg, lgd_mode="pooled", log=print):
     art, rep = paths["artifacts"], paths["reports"]
     rep.mkdir(exist_ok=True)
     lcfg, scfg = cfg["lgd"], cfg["stress"]
-    eps = cfg["evaluation"]["prob_clip"]
 
     df = pd.read_parquet(paths["processed"] / "model_table.parquet")
     liq = prepare_liquidations(pd.read_parquet(paths["processed"] / "liquidations.parquet"),
@@ -82,11 +73,11 @@ def run(cfg, lgd_mode="pooled", log=print):
         pred = pd.read_parquet(art / fs / "predictions.parquet").set_index("loan_id")
         is_test = df.loan_id.map(split).eq("test").to_numpy()
         for kind in ["scorecard", "lgbm"]:
-            bundle = joblib.load(art / fs / f"{kind}.joblib")
+            scorer = joblib.load(art / fs / f"{kind}.joblib")
             base = None
             for sname, sc in scfg["scenarios"].items():
                 d = shock(df, sc["ltv_pp"], sc["rate_pts"], scfg["ltv_cap"])
-                p = score(bundle, d, kind, eps)
+                p = scorer.predict_proba(d)[:, 1]
                 if sname == "baseline":
                     assert np.allclose(p[is_test], pred.loc[df.loan_id[is_test], f"p_{kind}_platt"].to_numpy(),
                                        atol=1e-6), f"baseline mismatch for {fs}/{kind}"

@@ -12,7 +12,11 @@ ROOT = Path(__file__).resolve().parents[1]
 
 @pytest.fixture(scope="session")
 def cfg():
-    return load_config(ROOT / "configs" / "project.yaml")
+    """Project config with the table-size floors relaxed: the synthetic fixtures hold a few dozen loans."""
+    c = load_config(ROOT / "configs" / "project.yaml")
+    c["validation"]["tables"]["origination"]["min_rows"] = 1
+    c["validation"]["tables"]["model_table"].update(min_rows=1, min_defaults=0, default_rate=[0.0, 1.0])
+    return c
 
 
 @pytest.fixture(scope="session")
@@ -47,7 +51,6 @@ def fitted_scorecard(cfg, model_table):
     from sklearn.model_selection import StratifiedKFold
 
     from creditrisk.config import feature_lists
-    from creditrisk.features import scorecard_frame
     from creditrisk.train import fit_scorecard
 
     small = copy.deepcopy(cfg)
@@ -55,5 +58,5 @@ def fitted_scorecard(cfg, model_table):
     spec = feature_lists(small, "full")
     y = model_table.target.to_numpy()
     cv = StratifiedKFold(3, shuffle=True, random_state=0)
-    search = fit_scorecard(scorecard_frame(model_table, spec), y, spec, small, cv)
+    search = fit_scorecard(model_table, y, spec, small, cv)
     return search.best_estimator_, spec

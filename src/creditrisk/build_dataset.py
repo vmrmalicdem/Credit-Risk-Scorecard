@@ -6,6 +6,7 @@ Reads configs/project.yaml + configs/schema_map.yaml, writes:
   data/processed/liquidations.parquet   credit-event terminations with realized loss (for LGD)
   data/processed/feature_spec.json      numeric / categorical feature lists (full set)
   reports/data_funnel.csv               loan counts at each step
+  reports/validation_{origination,model_table}.csv   observed null rates and ranges next to the configured limits
 Columns starting with meta_ are for reporting only and must never be used as features.
 """
 import argparse
@@ -23,6 +24,7 @@ from creditrisk.config import (
     project_paths,
 )
 from creditrisk.leakage import check_feature_config, check_model_features
+from creditrisk.validation import validate_model_table, validate_origination
 
 
 def read_table(path, mapping, names=None):
@@ -38,8 +40,12 @@ def month_index(s):
     return (v // 100) * 12 + (v % 100) - 1
 
 
-def build(cfg, schema, orig_path, perf_path, log=None):
-    """Return (model table, liquidations table, funnel DataFrame) from the two raw files."""
+def build(cfg, schema, orig_path, perf_path, log=None, validation_out=None):
+    """Return (model table, liquidations table, funnel DataFrame) from the two raw files.
+
+    The cleaned origination table and the finished modeling table are validated (validation.py). If validation_out
+    is a dict it receives the profile tables under "origination" and "model_table".
+    """
     omap = {c["pos"]: c["name"] for c in schema["origination"]}
     pmap = {c["pos"]: c["name"] for c in schema["performance"]}
     age, window = cfg["prediction_rule"]["age_months"], cfg["outcome_window_months"]
@@ -69,6 +75,7 @@ def build(cfg, schema, orig_path, perf_path, log=None):
     if mx:
         o = o[pd.to_numeric(o.first_payment_date) <= mx].copy()
     step(f"after dropping first payment later than {mx}", len(o))
+    profiles = {"origination": validate_origination(o, cfg)[0]}
     o["fp_idx"] = month_index(o.first_payment_date)
 
     need = ["loan_id", "period", "current_upb", "delinq_status", "zero_bal_code", "mod_flag", "actual_loss",
@@ -134,6 +141,9 @@ def build(cfg, schema, orig_path, perf_path, log=None):
     model = d.reset_index()[["loan_id", "pred_period", "target", "ead"] + features
                             + ["meta_disaster_event", "meta_assist_event"]]
     check_model_features(features, schema)
+    profiles["model_table"] = validate_model_table(model, cfg)[0]
+    if validation_out is not None:
+        validation_out.update(profiles)
 
     z = (p[p.credit_zb].sort_values("pidx").drop_duplicates("loan_id", keep="last")
          [["loan_id", "zero_bal_code", "pidx", "actual_loss", "zero_bal_removal_upb"]].copy())
@@ -152,8 +162,9 @@ def main(argv=None):
     cfg, schema = load_config(args.config), load_schema(args.schema)
     paths = project_paths(cfg)
     vy = cfg["vintage_year"]
+    profiles = {}
     model, z, funnel = build(cfg, schema, paths["raw"] / f"sample_orig_{vy}.txt",
-                             paths["raw"] / f"sample_perf_{vy}.txt", log=print)
+                             paths["raw"] / f"sample_perf_{vy}.txt", log=print, validation_out=profiles)
 
     out = paths["processed"]
     out.mkdir(parents=True, exist_ok=True)
@@ -164,6 +175,8 @@ def main(argv=None):
     with open(out / "feature_spec.json", "w") as fh:
         json.dump(full, fh, indent=2)
     funnel.to_csv(paths["reports"] / "data_funnel.csv", index=False)
+    for name, table in profiles.items():
+        table.to_csv(paths["reports"] / f"validation_{name}.csv", index=False)
 
     features = full["numeric"] + full["categorical"]
     defaults = model[model.target == 1]
@@ -178,7 +191,7 @@ def main(argv=None):
     print("lgd_raw quantiles (loss / balance at removal):")
     print(z.lgd_raw.describe(percentiles=[.05, .25, .5, .75, .95]).round(3).to_string())
     print(f"lgd_raw < 0: {(z.lgd_raw < 0).sum()}   > 1: {(z.lgd_raw > 1).sum()}")
-    print("\nWrote model_table.parquet, liquidations.parquet, feature_spec.json, data_funnel.csv")
+    print("\nWrote model_table.parquet, liquidations.parquet, feature_spec.json, data_funnel.csv, validation_*.csv")
 
 
 if __name__ == "__main__":

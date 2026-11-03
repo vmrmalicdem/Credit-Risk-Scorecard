@@ -12,6 +12,10 @@ Design: one loan-level stratified split (development / test). Tuning and Platt r
 cross-validation inside the development set only. No resampling or class weights. Development-set
 predictions in predictions.parquet are out-of-fold; test predictions come from models fitted on the full
 development set. Test metrics carry bootstrap 95% intervals. All parameters come from configs/project.yaml.
+
+Each model is one Pipeline over the raw loan table (see model.py), saved together with its Platt recalibration as a
+CalibratedScorer, so scoring new loans applies exactly the transformations used in training. The modeling table is
+validated (validation.py) before anything is fitted.
 """
 import argparse
 import json
@@ -19,10 +23,7 @@ import json
 import joblib
 import numpy as np
 import pandas as pd
-from lightgbm import LGBMClassifier
 from scipy.stats import spearmanr
-from sklearn.compose import ColumnTransformer
-from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import average_precision_score, roc_auc_score
 from sklearn.model_selection import (
     GridSearchCV,
@@ -30,8 +31,6 @@ from sklearn.model_selection import (
     cross_val_predict,
     train_test_split,
 )
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import OneHotEncoder
 
 from creditrisk.config import (
     FEATURE_SETS,
@@ -40,12 +39,7 @@ from creditrisk.config import (
     load_config,
     project_paths,
 )
-from creditrisk.features import (
-    QuantileBinner,
-    category_levels,
-    lgbm_frame,
-    scorecard_frame,
-)
+from creditrisk.features import category_levels
 from creditrisk.metrics import (
     apply_platt,
     bootstrap_indices,
@@ -53,6 +47,8 @@ from creditrisk.metrics import (
     calibration_bins,
     fit_platt,
 )
+from creditrisk.model import CalibratedScorer, build_lgbm_pipeline, build_scorecard_pipeline
+from creditrisk.validation import validate_model_table
 
 
 def make_split(df, cfg):
@@ -61,21 +57,16 @@ def make_split(df, cfg):
                             stratify=df.target.to_numpy(), random_state=cfg["seed"])
 
 
-def fit_scorecard(Xs, y, spec, cfg, cv):
-    pre = ColumnTransformer([
-        ("num", QuantileBinner(cfg["scorecard"]["n_bins"]), spec["numeric"]),
-        ("cat", OneHotEncoder(handle_unknown="infrequent_if_exist",
-                              min_frequency=cfg["scorecard"]["min_category_frequency"]), spec["categorical"]),
-    ])
-    search = GridSearchCV(Pipeline([("pre", pre), ("lr", LogisticRegression(max_iter=3000))]),
-                          {"lr__C": cfg["scorecard"]["c_grid"]}, scoring="neg_log_loss", cv=cv, n_jobs=-1)
-    return search.fit(Xs, y)
+def fit_scorecard(dev, y, spec, cfg, cv):
+    pipe = build_scorecard_pipeline(spec, cfg)
+    search = GridSearchCV(pipe, {"lr__C": cfg["scorecard"]["c_grid"]}, scoring="neg_log_loss", cv=cv, n_jobs=-1)
+    return search.fit(dev, y)
 
 
-def fit_lgbm(Xg, y, cfg, cv):
-    base = LGBMClassifier(**cfg["lgbm"]["fixed"], random_state=cfg["seed"], n_jobs=1, verbose=-1,
-                          deterministic=True, force_row_wise=True)
-    return GridSearchCV(base, cfg["lgbm"]["grid"], scoring="neg_log_loss", cv=cv, n_jobs=-1).fit(Xg, y)
+def fit_lgbm(dev, y, spec, cfg, levels, cv):
+    grid = {f"model__{k}": v for k, v in cfg["lgbm"]["grid"].items()}
+    search = GridSearchCV(build_lgbm_pipeline(spec, cfg, levels), grid, scoring="neg_log_loss", cv=cv, n_jobs=-1)
+    return search.fit(dev, y)
 
 
 def sign_check(coef_table, expected_signs):
@@ -101,6 +92,9 @@ def run(cfg, feature_set, log=print):
     eps, platt_c = ev["prob_clip"], ev["platt_c"]
 
     df = pd.read_parquet(paths["processed"] / "model_table.parquet")
+    profile_table, _ = validate_model_table(df, cfg)
+    paths["reports"].mkdir(parents=True, exist_ok=True)
+    profile_table.to_csv(paths["reports"] / "validation_model_table.csv", index=False)
     spec = feature_lists(cfg, feature_set)
     log(f"feature set: {feature_set} - {len(spec['numeric']) + len(spec['categorical'])} features")
 
@@ -115,18 +109,17 @@ def run(cfg, feature_set, log=print):
     cv = StratifiedKFold(cfg["split"]["cv_folds"], shuffle=True, random_state=seed)
     levels = category_levels(df, spec)
 
-    Xs_dev, Xs_test = scorecard_frame(dev, spec), scorecard_frame(test, spec)
-    sc = fit_scorecard(Xs_dev, y_dev, spec, cfg, cv)
+    sc = fit_scorecard(dev, y_dev, spec, cfg, cv)
     log(f"scorecard best: {sc.best_params_}")
-    Xg_dev, Xg_test = lgbm_frame(dev, spec, levels), lgbm_frame(test, spec, levels)
-    lgbm = fit_lgbm(Xg_dev, y_dev, cfg, cv)
-    log(f"lgbm best: {lgbm.best_params_}")
+    lgbm = fit_lgbm(dev, y_dev, spec, cfg, levels, cv)
+    lgbm_params = {k.removeprefix("model__"): v for k, v in lgbm.best_params_.items()}
+    log(f"lgbm best: {lgbm_params}")
 
-    models = {"scorecard": (sc.best_estimator_, Xs_dev, Xs_test), "lgbm": (lgbm.best_estimator_, Xg_dev, Xg_test)}
+    models = {"scorecard": sc.best_estimator_, "lgbm": lgbm.best_estimator_}
     raw_dev, raw_test, platt = {}, {}, {}
-    for name, (est, Xd, Xt) in models.items():
-        raw_dev[name] = cross_val_predict(est, Xd, y_dev, cv=cv, method="predict_proba")[:, 1]
-        raw_test[name] = est.predict_proba(Xt)[:, 1]
+    for name, est in models.items():
+        raw_dev[name] = cross_val_predict(est, dev, y_dev, cv=cv, method="predict_proba")[:, 1]
+        raw_test[name] = est.predict_proba(test)[:, 1]
         platt[name] = fit_platt(raw_dev[name], y_dev, eps, platt_c)
 
     variants = {}
@@ -165,13 +158,12 @@ def run(cfg, feature_set, log=print):
         pred[f"p_{vname}"] = np.concatenate([p_dev, p_test])
     pred.to_parquet(art / "predictions.parquet", index=False)
 
-    joblib.dump({"model": sc.best_estimator_, "platt": platt["scorecard"], "spec": spec}, art / "scorecard.joblib")
-    joblib.dump({"model": lgbm.best_estimator_, "platt": platt["lgbm"], "levels": levels, "spec": spec},
-                art / "lgbm.joblib")
+    for name, est in models.items():
+        joblib.dump(CalibratedScorer(est, platt[name], eps), art / f"{name}.joblib")
     with open(art / "run_summary.json", "w") as fh:
         json.dump({"feature_set": feature_set, "seed": seed, "n_dev": len(dev), "n_test": len(test),
                    "events_dev": int(y_dev.sum()), "events_test": int(y_test.sum()),
-                   "scorecard_params": sc.best_params_, "lgbm_params": lgbm.best_params_, "platt": platt,
+                   "scorecard_params": sc.best_params_, "lgbm_params": lgbm_params, "platt": platt,
                    "test_metrics": summary, "sensitivity_excl_disaster_defaults": sens}, fh, indent=2, default=float)
 
     show = pd.DataFrame(rows).pivot(index="model", columns="metric", values="estimate")

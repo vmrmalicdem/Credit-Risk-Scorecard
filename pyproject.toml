@@ -17,6 +17,7 @@ dependencies = [
     "pyarrow",
     "pyyaml",
     "joblib",
+    "pandera",
 ]
 
 [project.optional-dependencies]

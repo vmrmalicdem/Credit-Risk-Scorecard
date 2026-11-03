@@ -1,7 +1,8 @@
-"""Shared feature helpers: quantile binner for the scorecard and frame builders for both models.
+"""Shared feature helpers: quantile binner for the scorecard, frame builders and the pipeline steps that use them.
 
-Saved models are pickled with a reference to this module's path (creditrisk.features); do not rename it
-without retraining.
+ScorecardFrame and LgbmFrame are the first step of each model's Pipeline, so a raw loan table goes through exactly
+the same selection and cleaning at training and at scoring time. Saved models are pickled with a reference to this
+module's path (creditrisk.features); do not rename it without retraining.
 """
 import numpy as np
 import pandas as pd
@@ -65,3 +66,48 @@ def lgbm_frame(df, spec, levels):
         values = X[c].astype("object")
         X[c] = pd.Categorical(values.where(values.isin(levels[c]), None), categories=levels[c])
     return X
+
+
+def _require_columns(df, spec):
+    missing = [c for c in spec["numeric"] + spec["categorical"] if c not in df.columns]
+    if missing:
+        raise ValueError(f"input is missing feature columns: {missing}")
+
+
+class ScorecardFrame(BaseEstimator, TransformerMixin):
+    """Select the scorecard's feature columns and mark missing categories; stateless, so nothing is learned."""
+
+    def __init__(self, numeric, categorical):
+        self.numeric = numeric
+        self.categorical = categorical
+
+    def fit(self, X, y=None):
+        return self
+
+    def __sklearn_is_fitted__(self):
+        return True
+
+    def transform(self, X):
+        spec = {"numeric": self.numeric, "categorical": self.categorical}
+        _require_columns(X, spec)
+        return scorecard_frame(X, spec)
+
+
+class LgbmFrame(BaseEstimator, TransformerMixin):
+    """Select feature columns and give categoricals a fixed vocabulary; unseen values become missing."""
+
+    def __init__(self, numeric, categorical, levels):
+        self.numeric = numeric
+        self.categorical = categorical
+        self.levels = levels
+
+    def fit(self, X, y=None):
+        return self
+
+    def __sklearn_is_fitted__(self):
+        return True
+
+    def transform(self, X):
+        spec = {"numeric": self.numeric, "categorical": self.categorical}
+        _require_columns(X, spec)
+        return lgbm_frame(X, spec, self.levels)

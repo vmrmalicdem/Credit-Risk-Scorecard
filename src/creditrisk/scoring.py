@@ -7,8 +7,6 @@ offset - factor x (the model's log-odds of default), so the points table is an e
 import numpy as np
 import pandas as pd
 
-from creditrisk.features import scorecard_frame
-
 
 def points_scale(base_score, base_odds, pdo):
     factor = pdo / np.log(2)
@@ -65,11 +63,15 @@ def feature_bins(pre, spec):
     return rows
 
 
-def scorecard_table(pipeline, spec, dev, scale):
-    """Points table with development-set loan counts and default rates; first row is the base points."""
-    pre, lr = pipeline.named_steps["pre"], pipeline.named_steps["lr"]
+def scorecard_table(pipeline, dev, scale):
+    """Points table with development-set loan counts and default rates; first row is the base points.
+
+    pipeline is the fitted scorecard Pipeline (frame, pre, lr); dev is the raw loan table it was fitted on.
+    """
+    frame, pre, lr = (pipeline.named_steps[k] for k in ("frame", "pre", "lr"))
+    spec = {"numeric": list(frame.numeric), "categorical": list(frame.categorical)}
     factor, offset = scale
-    design = pre.transform(scorecard_frame(dev, spec))
+    design = pipeline[:-1].transform(dev)
     y = dev.target.to_numpy()
     counts = np.asarray(design.sum(axis=0)).ravel()
     events = np.asarray(design.T.dot(y)).ravel()

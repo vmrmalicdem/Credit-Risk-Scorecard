@@ -3,7 +3,6 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from creditrisk.features import scorecard_frame
 from creditrisk.scoring import (
     coefficients_to_points,
     feature_bins,
@@ -54,8 +53,8 @@ def test_coefficients_to_points_signs_and_base(scale):
 def test_points_total_equals_scale_applied_to_the_model_log_odds(fitted_scorecard, model_table, scale):
     pipe, spec = fitted_scorecard
     factor, offset = scale
-    X = scorecard_frame(model_table, spec)
-    design = pipe.named_steps["pre"].transform(X)
+    X = model_table
+    design = pipe[:-1].transform(X)
     pts, base = coefficients_to_points(pipe.named_steps["lr"].coef_[0], pipe.named_steps["lr"].intercept_[0],
                                        factor, offset)
     from_points = score_from_design(design, pts, base)
@@ -68,17 +67,17 @@ def test_points_total_equals_scale_applied_to_the_model_log_odds(fitted_scorecar
 def test_scorecard_table_reproduces_the_model_score(fitted_scorecard, model_table, scale):
     pipe, spec = fitted_scorecard
     factor, offset = scale
-    table = scorecard_table(pipe, spec, model_table, scale)
+    table = scorecard_table(pipe, model_table, scale)
     assert table.feature.iloc[0] == "BASE"
     body = table.iloc[1:]
-    design = pipe.named_steps["pre"].transform(scorecard_frame(model_table, spec))
+    design = pipe[:-1].transform(model_table)
     total = table.points.iloc[0] + np.asarray(design @ body.points.to_numpy()).ravel()
-    assert np.allclose(total, offset - factor * pipe.decision_function(scorecard_frame(model_table, spec)))
+    assert np.allclose(total, offset - factor * pipe.decision_function(model_table))
 
 
 def test_scorecard_table_counts_cover_every_loan_once_per_feature(fitted_scorecard, model_table, scale):
     pipe, spec = fitted_scorecard
-    body = scorecard_table(pipe, spec, model_table, scale).iloc[1:]
+    body = scorecard_table(pipe, model_table, scale).iloc[1:]
     per_feature = body.groupby("feature").loans_dev.sum()
     expected = len(model_table)
     # an unseen numeric value would add nothing; every feature here sees every loan in exactly one bin
@@ -88,7 +87,7 @@ def test_scorecard_table_counts_cover_every_loan_once_per_feature(fitted_scoreca
 
 def test_default_rate_per_bin_is_defaults_over_loans(fitted_scorecard, model_table, scale):
     pipe, spec = fitted_scorecard
-    body = scorecard_table(pipe, spec, model_table, scale).iloc[1:]
+    body = scorecard_table(pipe, model_table, scale).iloc[1:]
     ok = body.loans_dev > 0
     assert np.allclose(body.default_rate_dev[ok], body.defaults_dev[ok] / body.loans_dev[ok])
 
@@ -116,7 +115,7 @@ def test_higher_risk_inputs_score_lower_on_the_fitted_scorecard(fitted_scorecard
     safe["ltv"], risky["ltv"] = 40.0, 95.0
     safe["delinq_at_pred"], risky["delinq_at_pred"] = 0.0, 2.0
     both = pd.concat([safe, risky], ignore_index=True)
-    s = offset - factor * pipe.decision_function(scorecard_frame(both, spec))
+    s = offset - factor * pipe.decision_function(both)
     assert s[0] > s[1]
 
 
