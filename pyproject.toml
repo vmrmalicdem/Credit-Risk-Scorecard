@@ -18,6 +18,7 @@ dependencies = [
     "pyyaml",
     "joblib",
     "pandera",
+    "mlflow",
 ]
 
 [project.optional-dependencies]

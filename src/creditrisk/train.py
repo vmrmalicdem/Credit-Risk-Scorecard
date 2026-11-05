@@ -2,6 +2,7 @@
 
 Usage:  py -m creditrisk.train [--features full|origination]
 Reads:  data/processed/model_table.parquet, configs/project.yaml
+Also logs the run to MLflow and registers the models as 'candidate' versions (tracking.py; --no-track skips this).
 Writes: artifacts/<set>/{split.parquet, scorecard.joblib, lgbm.joblib, predictions.parquet, run_summary.json}
         reports/<set>/{model_comparison.csv, calibration_table.csv, scorecard_coefficients.csv, sign_check.csv}
 
@@ -40,6 +41,7 @@ from creditrisk.config import (
     project_paths,
 )
 from creditrisk.features import category_levels
+from creditrisk.lineage import collect
 from creditrisk.metrics import (
     apply_platt,
     bootstrap_indices,
@@ -83,7 +85,7 @@ def sign_check(coef_table, expected_signs):
     return pd.DataFrame(rows)
 
 
-def run(cfg, feature_set, log=print):
+def run(cfg, feature_set, log=print, track=True, config_path="configs/project.yaml"):
     paths = project_paths(cfg)
     art, rep = paths["artifacts"] / feature_set, paths["reports"] / feature_set
     art.mkdir(parents=True, exist_ok=True)
@@ -92,6 +94,8 @@ def run(cfg, feature_set, log=print):
     eps, platt_c = ev["prob_clip"], ev["platt_c"]
 
     df = pd.read_parquet(paths["processed"] / "model_table.parquet")
+    tracking_on = track and cfg.get("mlflow", {}).get("enabled", False)
+    lineage = collect(cfg, df, config_path) if tracking_on else None
     profile_table, _ = validate_model_table(df, cfg)
     paths["reports"].mkdir(parents=True, exist_ok=True)
     profile_table.to_csv(paths["reports"] / "validation_model_table.csv", index=False)
@@ -160,24 +164,35 @@ def run(cfg, feature_set, log=print):
 
     for name, est in models.items():
         joblib.dump(CalibratedScorer(est, platt[name], eps), art / f"{name}.joblib")
-    with open(art / "run_summary.json", "w") as fh:
-        json.dump({"feature_set": feature_set, "seed": seed, "n_dev": len(dev), "n_test": len(test),
+    run_summary = {"feature_set": feature_set, "seed": seed, "n_dev": len(dev), "n_test": len(test),
                    "events_dev": int(y_dev.sum()), "events_test": int(y_test.sum()),
                    "scorecard_params": sc.best_params_, "lgbm_params": lgbm_params, "platt": platt,
-                   "test_metrics": summary, "sensitivity_excl_disaster_defaults": sens}, fh, indent=2, default=float)
+                   "test_metrics": summary, "sensitivity_excl_disaster_defaults": sens}
+    with open(art / "run_summary.json", "w") as fh:
+        json.dump(run_summary, fh, indent=2, default=float)
 
     show = pd.DataFrame(rows).pivot(index="model", columns="metric", values="estimate")
     log(show[["roc_auc", "pr_auc", "brier", "cal_intercept", "cal_slope", "recall_top10"]].round(4).to_string())
     log("\nsign check:\n" + signs.round(2).to_string(index=False))
     log("\nsensitivity excluding disaster-flagged test defaults: " + json.dumps(sens))
-    return {"summary": summary, "sign_check": signs, "sensitivity": sens}
+    result = {"summary": summary, "sign_check": signs, "sensitivity": sens}
+    if tracking_on:
+        from creditrisk.tracking import track_training
+
+        ctx = {"lineage": lineage, "summary": run_summary, "art": art, "rep": rep, "spec": spec, "rows": rows,
+               "cv_scores": {"scorecard": sc.best_score_, "lgbm": lgbm.best_score_}, "example": test.head(100),
+               "scorers": {name: joblib.load(art / f"{name}.joblib") for name in models}, "config_path": config_path,
+               "manifest_path": paths["processed"] / "data_manifest.json"}
+        result["mlflow"] = track_training(cfg, feature_set, ctx, log)
+    return result
 
 
 def main(argv=None):
     ap = common_args(argparse.ArgumentParser(description=__doc__.splitlines()[0]))
     ap.add_argument("--features", choices=FEATURE_SETS, default="full")
+    ap.add_argument("--no-track", action="store_true", help="skip MLflow logging and model registration")
     args = ap.parse_args(argv)
-    run(load_config(args.config), args.features)
+    run(load_config(args.config), args.features, track=not args.no_track, config_path=args.config)
 
 
 if __name__ == "__main__":

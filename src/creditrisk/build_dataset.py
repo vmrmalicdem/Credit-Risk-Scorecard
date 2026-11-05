@@ -5,6 +5,7 @@ Reads configs/project.yaml + configs/schema_map.yaml, writes:
   data/processed/model_table.parquet    one row per eligible loan: features, target, EAD, meta_* columns
   data/processed/liquidations.parquet   credit-event terminations with realized loss (for LGD)
   data/processed/feature_spec.json      numeric / categorical feature lists (full set)
+  data/processed/data_manifest.json     SHA-256 of the raw files and the modeling table, for model lineage
   reports/data_funnel.csv               loan counts at each step
   reports/validation_{origination,model_table}.csv   observed null rates and ranges next to the configured limits
 Columns starting with meta_ are for reporting only and must never be used as features.
@@ -24,6 +25,7 @@ from creditrisk.config import (
     project_paths,
 )
 from creditrisk.leakage import check_feature_config, check_model_features
+from creditrisk.lineage import data_manifest
 from creditrisk.validation import validate_model_table, validate_origination
 
 
@@ -175,6 +177,9 @@ def main(argv=None):
     with open(out / "feature_spec.json", "w") as fh:
         json.dump(full, fh, indent=2)
     funnel.to_csv(paths["reports"] / "data_funnel.csv", index=False)
+    manifest = data_manifest(cfg, paths["raw"] / f"sample_orig_{vy}.txt", paths["raw"] / f"sample_perf_{vy}.txt",
+                             args.schema, out / "model_table.parquet")
+    (out / "data_manifest.json").write_text(json.dumps(manifest, indent=2))
     for name, table in profiles.items():
         table.to_csv(paths["reports"] / f"validation_{name}.csv", index=False)
 
@@ -191,7 +196,8 @@ def main(argv=None):
     print("lgd_raw quantiles (loss / balance at removal):")
     print(z.lgd_raw.describe(percentiles=[.05, .25, .5, .75, .95]).round(3).to_string())
     print(f"lgd_raw < 0: {(z.lgd_raw < 0).sum()}   > 1: {(z.lgd_raw > 1).sum()}")
-    print("\nWrote model_table.parquet, liquidations.parquet, feature_spec.json, data_funnel.csv, validation_*.csv")
+    print("\nWrote model_table.parquet, liquidations.parquet, feature_spec.json, data_manifest.json,"
+          " data_funnel.csv, validation_*.csv")
 
 
 if __name__ == "__main__":

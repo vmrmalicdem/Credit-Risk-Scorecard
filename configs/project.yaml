@@ -125,3 +125,22 @@ validation:
     meta_assist_event: {allowed: [0, 1]}
     pred_period: {pattern: '^\d{6}$'}
     loan_id: {pattern: '^[A-Z]\w{2,}$'}
+
+# Experiment tracking and model registry (MLflow, local SQLite store; see docs/experiment_tracking.md).
+# Registry labels are aliases (MLflow's replacement for the deprecated Staging/Production stages).
+mlflow:
+  enabled: true
+  tracking_uri: sqlite:///mlruns/mlflow.db
+  artifact_root: mlruns/artifacts
+  experiment: credit-risk-scorecard
+  model_name: "creditrisk-{feature_set}-{model}"
+  candidate_alias: candidate
+  production_alias: production
+  previous_alias: previous_production
+  code_root: .
+  code_paths: [src, configs, pyproject.toml, requirements.txt]   # dirty = uncommitted changes in these paths
+  promotion:                     # gates checked by `registry promote`; --force --reason overrides and is recorded
+    min_test_roc_auc: 0.70
+    max_roc_auc_drop_vs_production: 0.02
+    require_clean_code: true
+    require_matching_data: true

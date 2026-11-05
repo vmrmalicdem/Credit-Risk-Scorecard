@@ -4,12 +4,14 @@ Usage (from repo root):
   py -m creditrisk.score --input loans.parquet --output scores.csv [--features full] [--model lgbm]
 The input is a CSV or parquet file with one row per loan and the raw feature columns (the same columns as
 data/processed/model_table.parquet). The columns and values are validated first (configs/project.yaml, validation),
-then the saved model, which contains every preprocessing step, is applied unchanged. Output: loan_id (if present),
-the calibrated default probability, and the scorecard points.
+then the saved model, which contains every preprocessing step, is applied unchanged. Use --model-uri to score with a
+registered version instead of the local file, for example models:/creditrisk-full-lgbm@production.
+Output: loan_id (if present), the calibrated default probability, and the scorecard points.
 """
 import argparse
 
 import joblib
+import mlflow
 import pandas as pd
 
 from creditrisk.config import FEATURE_SETS, common_args, load_config, project_paths
@@ -38,12 +40,20 @@ def main(argv=None):
     ap.add_argument("--output", required=True)
     ap.add_argument("--features", choices=FEATURE_SETS, default="full")
     ap.add_argument("--model", choices=["scorecard", "lgbm"], default="lgbm")
+    ap.add_argument("--model-uri", help="registry model, e.g. models:/creditrisk-full-lgbm@production")
     args = ap.parse_args(argv)
     cfg = load_config(args.config)
-    scorer = joblib.load(project_paths(cfg)["artifacts"] / args.features / f"{args.model}.joblib")
+    if args.model_uri:
+        from creditrisk.tracking import setup
+
+        setup(cfg)
+        scorer = mlflow.sklearn.load_model(args.model_uri)
+    else:
+        scorer = joblib.load(project_paths(cfg)["artifacts"] / args.features / f"{args.model}.joblib")
     out = score_loans(read_loans(args.input), scorer, cfg)
     out.to_csv(args.output, index=False)
-    print(f"Scored {len(out):,} loans with the {args.features} {args.model} model -> {args.output}")
+    source = args.model_uri or f"the {args.features} {args.model} model"
+    print(f"Scored {len(out):,} loans with {source} -> {args.output}")
 
 
 if __name__ == "__main__":
