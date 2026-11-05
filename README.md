@@ -135,6 +135,8 @@ pytest
 ```
 Every parameter (seed, split, bins, model grids, LGD rules, stress scenarios, points scaling, feature lists) is in `configs/project.yaml`; nothing is hardcoded in the code. Dependencies are pinned in `requirements.txt` (generated on Python 3.13).
 
+Experiment tracking. Each training run is logged to MLflow (local store in mlruns/, not committed) and its models are registered as candidate. py -m creditrisk.registry promote applies the gates and sets production. py -m creditrisk.registry lineage --alias production --check shows the raw-file hashes, git commit, config hash and parameters behind a model. See docs/experiment_tracking.md.
+
 ## Development
 ```
 pip install -r requirements.txt
