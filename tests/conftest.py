@@ -60,3 +60,40 @@ def fitted_scorecard(cfg, model_table):
     cv = StratifiedKFold(3, shuffle=True, random_state=0)
     search = fit_scorecard(model_table, y, spec, small, cv)
     return search.best_estimator_, spec
+
+
+@pytest.fixture(scope="session")
+def serving_table(cfg):
+    from synth import make_valid_table
+
+    return make_valid_table(cfg, n=3000, seed=5)
+
+
+@pytest.fixture(scope="session")
+def model_dirs(cfg, serving_table, tmp_path_factory):
+    """Exported model folders (scorecard and lgbm, full feature set) trained on a small synthetic table."""
+    from creditrisk.config import feature_lists
+    from creditrisk.export import write_model_dir
+    from creditrisk.features import category_levels
+    from creditrisk.metrics import fit_platt
+    from creditrisk.model import CalibratedScorer, build_lgbm_pipeline, build_scorecard_pipeline
+
+    dev = serving_table.iloc[:2000].reset_index(drop=True)
+    y = dev.target.to_numpy()
+    spec = feature_lists(cfg, "full")
+    small = copy.deepcopy(cfg)
+    small["lgbm"]["fixed"]["n_estimators"] = 30
+    params = {k: v[0] for k, v in small["lgbm"]["grid"].items()}
+    pipes = {"scorecard": build_scorecard_pipeline(spec, small),
+             "lgbm": build_lgbm_pipeline(spec, small, category_levels(dev, spec), params=params)}
+    root = tmp_path_factory.mktemp("models")
+    out = {}
+    for kind, pipe in pipes.items():
+        pipe.fit(dev, y)
+        eps = cfg["evaluation"]["prob_clip"]
+        platt = fit_platt(pipe.predict_proba(dev)[:, 1], y, eps, cfg["evaluation"]["platt_c"])
+        scorer = CalibratedScorer(pipe, platt, eps)
+        meta = {"source": "test", "registry_name": f"creditrisk-full-{kind}", "registry_version": 1, "run_id": "r1"}
+        write_model_dir(scorer, cfg, ROOT / "configs" / "project.yaml", root / kind, meta)
+        out[kind] = root / kind
+    return out

@@ -57,6 +57,10 @@ class CalibratedScorer(BaseEstimator, ClassifierMixin):
         """Calibrated default probability, one value per loan (what a registry or serving layer returns)."""
         return self.predict_proba(X)[:, 1]
 
-    def predict_proba(self, X):
-        q = apply_platt(self.predict_raw(X), self.platt, self.eps)
+    def calibrate(self, raw):
+        """Platt-recalibrated probabilities from raw model probabilities."""
+        q = apply_platt(raw, self.platt, self.eps)
         return np.column_stack([1 - q, q])
+
+    def predict_proba(self, X):
+        return self.calibrate(self.predict_raw(X))

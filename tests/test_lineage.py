@@ -40,7 +40,8 @@ def test_file_and_json_hashes(tmp_path):
     assert sha256_json({"a": 1, "b": 2}) == sha256_json({"b": 2, "a": 1})
 
 
-def test_outside_a_git_repository_everything_is_unknown(tmp_path):
+def test_outside_a_git_repository_everything_is_unknown(tmp_path, monkeypatch):
+    monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(tmp_path.parent))
     info = git_info(tmp_path, ["src"])
     assert info["commit"] == info["dirty"] == "unknown" and info["dirty_files"] == []
 

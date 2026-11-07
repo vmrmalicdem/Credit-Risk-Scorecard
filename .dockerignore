@@ -1,0 +1,17 @@
+.git
+.github
+.venv
+.pre-commit-config.yaml
+.pytest_cache
+.ruff_cache
+**/__pycache__
+**/*.pyc
+data
+artifacts
+mlruns
+reports
+tests
+docs
+examples
+deploy/*
+!deploy/model

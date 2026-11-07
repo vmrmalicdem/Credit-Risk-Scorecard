@@ -20,4 +20,4 @@ repos:
         name: block raw or derived loan data from being committed
         language: fail
         entry: "Loan-level data and model artifacts must not be committed (see README, data terms)."
-        files: ^(data|artifacts|mlruns)/
+        files: ^(data|artifacts|mlruns|deploy)/

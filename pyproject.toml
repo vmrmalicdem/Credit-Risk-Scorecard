@@ -19,10 +19,12 @@ dependencies = [
     "joblib",
     "pandera",
     "mlflow",
+    "fastapi",
+    "uvicorn",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "ruff", "pre-commit"]
+dev = ["pytest", "ruff", "pre-commit", "httpx"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

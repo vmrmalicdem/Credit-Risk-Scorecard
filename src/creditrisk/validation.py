@@ -121,3 +121,23 @@ def validate_model_table(df, cfg):
 def validate_scoring_input(df, cfg, spec):
     cols = spec["numeric"] + spec["categorical"]
     return _run(df, cfg, cols, None, False, "scoring_input")
+
+
+def invalid_rows(df, cfg, spec):
+    """Row-level scoring-input check for batches: (positions of failing rows, one failure record per problem).
+
+    Missing columns still raise DataValidationError, because no row can be scored without them.
+    """
+    cols = spec["numeric"] + spec["categorical"]
+    missing = [c for c in cols if c not in df.columns]
+    if missing:
+        raise DataValidationError(f"scoring_input: missing columns {missing}")
+    try:
+        build_schema(cfg, cols, None, False).validate(df.reset_index(drop=True), lazy=True)
+    except pa.errors.SchemaErrors as err:
+        f = err.failure_cases
+        f = f[f["index"].notna()]
+        out = pd.DataFrame({"row": f["index"].astype(int), "column": f["column"], "check": f["check"].astype(str),
+                            "failure_case": f["failure_case"].astype(str)})
+        return sorted(out.row.unique()), out
+    return [], pd.DataFrame(columns=["row", "column", "check", "failure_case"])

@@ -144,3 +144,40 @@ mlflow:
     max_roc_auc_drop_vs_production: 0.02
     require_clean_code: true
     require_matching_data: true
+
+# Serving (API and batch scoring). Cutoffs are illustrative credit policy, not model output: set them from the
+# decision bands in the batch summary (py -m creditrisk.batch ... --summary) and your own risk appetite.
+serving:
+  max_reasons: 4
+  max_batch_rows: 1000000
+  decision:
+    lower_pd: 0.004            # below this PD: first label
+    upper_pd: 0.02             # at or above this PD: third label; in between: second label
+    labels:
+      full: [no_action, review, escalate]        # full set scores existing loans at month 24 (account review)
+      origination: [approve, refer, decline]     # origination set scores applications
+  reason_codes:                # feature -> code and text; reasons rank the features that cost the most risk
+    credit_score: {code: R01, text: "Credit score"}
+    ltv: {code: R02, text: "Loan-to-value ratio at origination"}
+    cltv: {code: R03, text: "Combined loan-to-value ratio at origination"}
+    dti: {code: R04, text: "Debt-to-income ratio at origination"}
+    orig_upb: {code: R05, text: "Original loan balance"}
+    orig_rate: {code: R06, text: "Interest rate at origination"}
+    mi_pct: {code: R07, text: "Mortgage insurance coverage"}
+    num_units: {code: R08, text: "Number of property units"}
+    orig_term: {code: R09, text: "Original loan term"}
+    num_borrowers: {code: R10, text: "Number of borrowers"}
+    first_time_homebuyer: {code: R11, text: "First-time homebuyer status"}
+    occupancy: {code: R12, text: "Occupancy type"}
+    channel: {code: R13, text: "Origination channel"}
+    loan_purpose: {code: R14, text: "Loan purpose"}
+    property_type: {code: R15, text: "Property type"}
+    state: {code: R16, text: "Property state"}
+    prepay_penalty_flag: {code: R17, text: "Prepayment penalty"}
+    super_conforming: {code: R18, text: "Super-conforming loan"}
+    harp_flag: {code: R19, text: "HARP refinance"}
+    upb_ratio: {code: R20, text: "Current balance relative to original balance"}
+    delinq_at_pred: {code: R21, text: "Current delinquency status"}
+    max_delinq_prior12: {code: R22, text: "Worst delinquency in the prior 12 months"}
+    ever_90_before: {code: R23, text: "Previous 90+ day delinquency"}
+    mod_at_pred: {code: R24, text: "Loan modification status"}
